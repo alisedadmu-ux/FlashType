@@ -1,11 +1,19 @@
 <template>
   <div class="monkeytype-container" @click="focusEngine">
     <header class="app-header">
-      <div class="logo">
-        <span class="logo-accent">⚡</span> flashType
+      <div class="logo-group">
+        <div class="logo" @click="switchTab('test')">
+          <span class="logo-accent">⚡</span> flashType
+        </div>
+        
+        <nav class="main-nav">
+          <button :class="{ active: activeTab === 'test' }" @click="switchTab('test')">⌨️ test</button>
+          <button :class="{ active: activeTab === 'leaderboard' }" @click="switchTab('leaderboard')">🏆 leaderboard</button>
+          <button :class="{ active: activeTab === 'bests' }" @click="switchTab('bests')">👑 personal bests</button>
+        </nav>
       </div>
       
-      <div class="controls-wrapper" v-if="gameState === 'idle' || gameState === 'typing'">
+      <div class="controls-wrapper" v-if="activeTab === 'test' && gameState !== 'results'">
         <div class="selector-group">
           <span class="selector-label">difficulty:</span>
           <button 
@@ -34,7 +42,7 @@
       </div>
     </header>
 
-    <div v-if="gameState !== 'results'" class="test-view">
+    <div v-if="activeTab === 'test' && gameState !== 'results'" class="test-view">
       <div class="test-meta">
         <div class="live-timer" :class="{ active: gameState === 'typing' }">
           {{ formattedTimeLeft }}
@@ -65,11 +73,7 @@
         />
         
         <div class="words-container">
-          <div 
-            v-for="(word, wIdx) in targetWords" 
-            :key="wIdx" 
-            class="word-block"
-          >
+          <div v-for="(word, wIdx) in targetWords" :key="wIdx" class="word-block">
             <span 
               v-for="(char, cIdx) in word" 
               :key="cIdx"
@@ -91,7 +95,7 @@
       </div>
     </div>
 
-    <div v-else class="results-view">
+    <div v-else-if="activeTab === 'test' && gameState === 'results'" class="results-view">
       <h2 class="section-title">
         {{ currentTestNumber === 5 ? '🎉 Difficulty Tier Completed!' : 'Test Results' }}
       </h2>
@@ -117,8 +121,19 @@
         </div>
       </div>
 
+      <div class="action-row">
+        <button v-if="currentTestNumber < 5" class="action-btn primary-btn" @click="advanceToNextTest">
+          Next Test ({{ currentTestNumber + 1 }}/5) ➔
+        </button>
+        <button class="action-btn secondary-btn" @click="resetDifficultyTier">
+          Reset Tier (Test 1)
+        </button>
+      </div>
+    </div>
+
+    <div v-else-if="activeTab === 'leaderboard'" class="results-view">
       <div class="leaderboard-section">
-        <h3>🏆 Personal Leaderboard (Top Runs)</h3>
+        <h2 class="section-title">🏆 Global Personal Records (Top 5 Runs)</h2>
         <table class="leaderboard-table">
           <thead>
             <tr>
@@ -140,19 +155,34 @@
               <td>{{ run.date }}</td>
             </tr>
             <tr v-if="leaderboard.length === 0">
-              <td colspan="6" class="empty-lead">No entries logged yet. Finish a test to set a record!</td>
+              <td colspan="6" class="empty-lead">No entries logged yet. Complete a test to set a record!</td>
             </tr>
           </tbody>
         </table>
       </div>
+    </div>
 
-      <div class="action-row">
-        <button v-if="currentTestNumber < 5" class="action-btn primary-btn" @click="advanceToNextTest">
-          Next Test ({{ currentTestNumber + 1 }}/5) ➔
-        </button>
-        <button class="action-btn secondary-btn" @click="resetDifficultyTier">
-          Reset Tier (Test 1)
-        </button>
+    <div v-else-if="activeTab === 'bests'" class="results-view">
+      <h2 class="section-title">👑 All-Time Personal Bests by Tier</h2>
+      
+      <div class="performance-grid">
+        <div class="metric-big best-card">
+          <span class="lbl custom-easy">🟢 Easy Mode Peak</span>
+          <span class="num">{{ personalBests.easy }} <span class="mini-lbl">WPM</span></span>
+        </div>
+        <div class="metric-big best-card">
+          <span class="lbl custom-medium">🟡 Medium Mode Peak</span>
+          <span class="num">{{ personalBests.medium }} <span class="mini-lbl">WPM</span></span>
+        </div>
+        <div class="metric-big best-card">
+          <span class="lbl custom-hard">🔴 Hard Mode Peak</span>
+          <span class="num">{{ personalBests.hard }} <span class="mini-lbl">WPM</span></span>
+        </div>
+      </div>
+      
+      <div class="diagnostic-card outline-card">
+        <h3>💡 Pro Gamer Stats</h3>
+        <p>These values represent the single absolute highest speed achieved within each category across all recorded history on this profile.</p>
       </div>
     </div>
   </div>
@@ -160,6 +190,8 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+
+const activeTab = ref("test") // Tracks current screen view: 'test' | 'leaderboard' | 'bests'
 
 const timeConfigs = [
   { label: '15s', seconds: 15 },
@@ -212,6 +244,17 @@ const formattedTimeLeft = computed(() => {
   return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
 })
 
+// Automatically scans all run logs to isolate absolute highest speeds per layout group
+const personalBests = computed(() => {
+  const bests = { easy: 0, medium: 0, hard: 0 }
+  leaderboard.value.forEach(run => {
+    if (run.wpm > bests[run.difficulty]) {
+      bests[run.difficulty] = run.wpm
+    }
+  })
+  return bests
+})
+
 const formatTimeLabel = (seconds) => {
   const cfg = timeConfigs.find(c => c.seconds === seconds)
   return cfg ? cfg.label : `${seconds}s`
@@ -228,9 +271,21 @@ const generateText = () => {
 }
 
 const focusEngine = () => {
-  if (gameState.value !== 'results') {
+  if (gameState.value !== 'results' && activeTab.value === 'test') {
     hiddenInput.value?.focus()
     isInputFocused.value = true
+  }
+}
+
+const switchTab = (tabName) => {
+  activeTab.value = tabName
+  if (tabName !== 'test') {
+    clearInterval(timerInterval)
+    userInput.value = ""
+    gameState.value = 'idle'
+    timeLeft.value = maxTime.value
+  } else {
+    nextTick(() => focusEngine())
   }
 }
 
@@ -350,11 +405,11 @@ const saveRunToLeaderboard = (wpmScore, accuracyScore) => {
   }
   leaderboard.value.push(currentRun)
   leaderboard.value.sort((a, b) => b.wpm - a.wpm)
-  if (leaderboard.value.length > 5) leaderboard.value = leaderboard.value.slice(0, 5)
+  if (leaderboard.value.length > 30) leaderboard.value = leaderboard.value.slice(0, 30) // store up to 30 for calculations
   localStorage.setItem('ft_leaderboard_multi', JSON.stringify(leaderboard.value))
 }
 
-const handleFocus = () => { isInputFocused.value = true }
+const handleFocus = () => { if (activeTab.value === 'test') isInputFocused.value = true }
 const handleBlur = () => { isInputFocused.value = false }
 
 onMounted(() => {
@@ -400,12 +455,42 @@ onUnmounted(() => {
   margin-right: auto;
 }
 
+.logo-group {
+  display: flex;
+  align-items: center;
+  gap: 3rem;
+}
+
 .logo {
   font-size: 1.8rem;
   font-weight: 700;
   color: #d1d0c5;
+  cursor: pointer;
 }
 .logo-accent { color: #e2b714; }
+
+.main-nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.main-nav button {
+  background: none;
+  border: none;
+  color: #646669;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.main-nav button:hover, .main-nav button.active {
+  color: #d1d0c5;
+  background-color: #2c2e31;
+}
 
 .controls-wrapper {
   display: flex;
@@ -499,7 +584,6 @@ onUnmounted(() => {
   user-select: none;
 }
 
-/* FIX: Keep complete words intact together, and space out gaps horizontally */
 .word-block { 
   display: inline-block; 
   white-space: nowrap;
@@ -508,7 +592,6 @@ onUnmounted(() => {
 }
 
 .letter { position: relative; display: inline-block; }
-
 .letter-default { color: #646669; }
 .letter-correct { color: #d1d0c5; }
 .letter-wrong { color: #ca4754; background: rgba(202, 71, 84, 0.12); border-radius: 2px; }
@@ -567,7 +650,15 @@ onUnmounted(() => {
 .metric-big .num { font-size: 5rem; font-weight: 700; color: #e2b714; line-height: 0.9; }
 .metric-big .lbl { font-size: 1.1rem; color: #646669; text-transform: uppercase; margin-top: 0.75rem; font-weight: 700; }
 
+.best-card { background: linear-gradient(145deg, #2c2e31, #232427); border: 1px solid #383a3d; }
+.mini-lbl { font-size: 1.5rem; color: #646669; font-weight: 400; }
+
+.custom-easy { color: #a3be8c !important; }
+.custom-medium { color: #ebcb8b !important; }
+.custom-hard { color: #bf616a !important; }
+
 .diagnostic-card { background: #2c2e31; border-left: 5px solid #e2b714; border-radius: 0 14px 14px 0; padding: 2rem; }
+.outline-card { border: 1px solid #2c2e31; border-left: 5px solid #646669; background: none; }
 .diagnostic-card h3 { margin: 0 0 1rem 0; font-size: 1.3rem; color: #d1d0c5; }
 .diagnostic-card p { margin: 0; line-height: 1.7; color: #9a998e; font-size: 1.05rem; }
 
