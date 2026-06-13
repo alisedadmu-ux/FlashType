@@ -133,26 +133,26 @@
 
     <div v-else-if="activeTab === 'leaderboard'" class="results-view">
       <div class="leaderboard-section">
-        <h2 class="section-title">🏆 Global Personal Records (Top 5 Runs)</h2>
+        <h2 class="section-title">🏆 Local Leaderboard (Top 5 Personal Runs)</h2>
         <table class="leaderboard-table">
           <thead>
             <tr>
               <th>Rank</th>
+              <th>Name</th>
               <th>Speed (WPM)</th>
               <th>Accuracy</th>
               <th>Difficulty</th>
               <th>Time Mode</th>
-              <th>Date</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(run, index) in leaderboard" :key="index" :class="{ 'top-run': index === 0 }">
               <td>#{{ index + 1 }}</td>
+              <td class="name-column">{{ run.name || 'Anonymous' }}</td>
               <td class="wpm-column">{{ run.wpm }} WPM</td>
               <td>{{ run.accuracy }}%</td>
               <td class="diff-tag" :class="run.difficulty">{{ run.difficulty }}</td>
               <td>{{ formatTimeLabel(run.mode) }}</td>
-              <td>{{ run.date }}</td>
             </tr>
             <tr v-if="leaderboard.length === 0">
               <td colspan="6" class="empty-lead">No entries logged yet. Complete a test to set a record!</td>
@@ -182,7 +182,7 @@
       
       <div class="diagnostic-card outline-card">
         <h3>💡 Pro Gamer Stats</h3>
-        <p>These values represent the single absolute highest speed achieved within each category across all recorded history on this profile.</p>
+        <p>These values represent your single highest speeds pulled from your local records.</p>
       </div>
     </div>
   </div>
@@ -191,7 +191,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 
-const activeTab = ref("test") // Tracks current screen view: 'test' | 'leaderboard' | 'bests'
+const activeTab = ref("test")
 
 const timeConfigs = [
   { label: '15s', seconds: 15 },
@@ -244,7 +244,6 @@ const formattedTimeLeft = computed(() => {
   return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
 })
 
-// Automatically scans all run logs to isolate absolute highest speeds per layout group
 const personalBests = computed(() => {
   const bests = { easy: 0, medium: 0, hard: 0 }
   leaderboard.value.forEach(run => {
@@ -284,6 +283,7 @@ const switchTab = (tabName) => {
     userInput.value = ""
     gameState.value = 'idle'
     timeLeft.value = maxTime.value
+    loadLeaderboard()
   } else {
     nextTick(() => focusEngine())
   }
@@ -390,23 +390,37 @@ const resetTest = () => {
   nextTick(() => focusEngine())
 }
 
+// FETCH LEADERBOARD FROM LOCAL STORAGE
 const loadLeaderboard = () => {
-  const savedData = localStorage.getItem('ft_leaderboard_multi')
-  if (savedData) leaderboard.value = JSON.parse(savedData)
+  if (process.client) {
+    const stored = localStorage.getItem('flashtype_scores')
+    if (stored) {
+      leaderboard.value = JSON.parse(stored)
+    }
+  }
 }
 
+// SAVE RUN TO LOCAL STORAGE LEADERBOARD
 const saveRunToLeaderboard = (wpmScore, accuracyScore) => {
-  const currentRun = {
+  const userName = prompt("Enter your tag name for your leaderboard:") || "Anonymous"
+
+  const newRun = {
+    name: userName,
     wpm: wpmScore,
     accuracy: accuracyScore,
     difficulty: currentDifficulty.value,
     mode: maxTime.value,
-    date: new Date().toLocaleDateString()
+    date: Date.now()
   }
-  leaderboard.value.push(currentRun)
+
+  // Add new score, sort by highest WPM, and keep the top 5
+  leaderboard.value.push(newRun)
   leaderboard.value.sort((a, b) => b.wpm - a.wpm)
-  if (leaderboard.value.length > 30) leaderboard.value = leaderboard.value.slice(0, 30) // store up to 30 for calculations
-  localStorage.setItem('ft_leaderboard_multi', JSON.stringify(leaderboard.value))
+  leaderboard.value = leaderboard.value.slice(0, 5)
+
+  if (process.client) {
+    localStorage.setItem('flashtype_scores', JSON.stringify(leaderboard.value))
+  }
 }
 
 const handleFocus = () => { if (activeTab.value === 'test') isInputFocused.value = true }
@@ -668,6 +682,7 @@ onUnmounted(() => {
 .leaderboard-table td { padding: 1.25rem 1rem; color: #646669; border-bottom: 1px solid #2c2e31; }
 .leaderboard-table tr.top-run td { color: #d1d0c5; }
 .leaderboard-table tr.top-run .wpm-column { color: #e2b714; font-weight: 700; }
+.name-column { color: #d1d0c5; font-weight: 700; }
 
 .diff-tag { text-transform: uppercase; font-size: 0.85rem; font-weight: bold; }
 .diff-tag.easy { color: #a3be8c; }
