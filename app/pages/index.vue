@@ -59,6 +59,8 @@
           type="text"
           class="hidden-input"
           @input="processInput"
+          @blur="handleBlur"
+          @focus="handleFocus"
           :disabled="timeLeft === 0"
         />
         
@@ -77,9 +79,8 @@
               <span v-if="isCaretHere(wIdx, cIdx)" class="custom-caret"></span>
               {{ char }}
             </span>
-
-            <span :class="getSpaceClass(wIdx)" class="letter space-letter">
-              <span v-if="isCaretAtSpace(wIdx)" class="custom-caret"></span>&nbsp;
+            <span v-if="isCaretAtSpace(wIdx)" class="space-caret-container">
+              <span class="custom-caret"></span>
             </span>
           </div>
         </div>
@@ -160,7 +161,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 
-// Time configurations mapping interface helper arrays
 const timeConfigs = [
   { label: '15s', seconds: 15 },
   { label: '30s', seconds: 30 },
@@ -169,11 +169,10 @@ const timeConfigs = [
   { label: '5m', seconds: 300 }
 ]
 
-// Specialized Difficulties Multi-Word Matrix Bank
 const difficulties = {
   easy: [
-    "the", "and", "cat", "dog", "big", "run", "the", "you", "it", "he", "was", "for", "on", "are", 
-    "as", "with", "his", "they", "i", "at", "be", "this", "have", "from", "or", "one", "had", "by"
+    "the", "and", "cat", "dog", "big", "run", "you", "it", "he", "was", "for", "on", "are", 
+    "as", "with", "his", "they", "at", "be", "this", "have", "from", "or", "one", "had", "by"
   ],
   medium: [
     "people", "around", "system", "through", "because", "another", "problem", "against", "without",
@@ -206,7 +205,6 @@ const fullTargetString = computed(() => {
   return targetWords.value.join(' ') + ' '
 })
 
-// Dynamically transforms timeLeft integer value to MM:SS string structure when above 60s
 const formattedTimeLeft = computed(() => {
   if (timeLeft.value < 60) return `${timeLeft.value}s`
   const minutes = Math.floor(timeLeft.value / 60)
@@ -222,9 +220,7 @@ const formatTimeLabel = (seconds) => {
 const generateText = () => {
   const selected = []
   const pool = difficulties[currentDifficulty.value]
-  
-  // Generates up to 350 words to avoid running out of text on long 5-minute typing tests
-  const count = maxTime.value >= 120 ? 350 : 60
+  const count = maxTime.value >= 120 ? 350 : 80
   for (let i = 0; i < count; i++) {
     selected.push(pool[Math.floor(Math.random() * pool.length)])
   }
@@ -271,13 +267,6 @@ const getLetterClass = (wordIdx, charIdx) => {
   const absIdx = getAbsoluteIndex(wordIdx, charIdx)
   if (absIdx >= userInput.value.length) return 'letter-default'
   return userInput.value[absIdx] === fullTargetString.value[absIdx] ? 'letter-correct' : 'letter-wrong'
-}
-
-const getSpaceClass = (wordIdx) => {
-  const wordLength = targetWords.value[wordIdx].length
-  const absIdx = getAbsoluteIndex(wordIdx, wordLength)
-  if (absIdx >= userInput.value.length) return 'letter-default'
-  return userInput.value[absIdx] === ' ' ? 'letter-correct' : 'letter-wrong-space'
 }
 
 const processInput = () => {
@@ -506,17 +495,31 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   font-size: 1.85rem;
-  line-height: 1.6;
+  line-height: 1.8;
   user-select: none;
 }
 
-.word-block { display: flex; position: relative; }
+/* FIX: Keep complete words intact together, and space out gaps horizontally */
+.word-block { 
+  display: inline-block; 
+  white-space: nowrap;
+  margin-right: 1.25rem; 
+  position: relative;
+}
+
 .letter { position: relative; display: inline-block; }
 
 .letter-default { color: #646669; }
 .letter-correct { color: #d1d0c5; }
 .letter-wrong { color: #ca4754; background: rgba(202, 71, 84, 0.12); border-radius: 2px; }
-.letter-wrong-space { background: rgba(202, 71, 84, 0.25); border-radius: 2px; }
+
+.space-caret-container {
+  position: absolute;
+  right: -0.5rem;
+  top: 0;
+  width: 0.5rem;
+  height: 100%;
+}
 
 .custom-caret {
   position: absolute;
